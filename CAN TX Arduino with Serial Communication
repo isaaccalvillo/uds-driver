@@ -1,0 +1,109 @@
+#include <ESP32-TWAI-CAN.hpp>
+#include <stdint.h>
+#include <stdio.h>
+
+#define CAN_TX   5  // Connects to CTX
+#define CAN_RX   4  // Connects to CRX 
+String UDSRequest="";//initialize string
+ int startIndex = 0;
+ int spaceIndex;
+ int counter=0;
+
+CanFrame rxFrame; // Create frame to read 
+
+void setup() {
+  // Set up serial for debugging
+  Serial.begin(115200);
+  delay(500);
+
+  // Set the pins
+  ESP32Can.setPins(CAN_TX, CAN_RX);
+
+  // Start the CAN bus at 500 kbps
+  if(ESP32Can.begin(ESP32Can.convertSpeed(500))) {
+      //Serial.println("CAN bus started!");
+  } else {
+      //Serial.println("CAN bus failed!");
+  }
+}
+
+void loop() {
+
+serialUDS();
+  //canSender();  // call function to send data through CAN
+  //canReceiver(); // call function to recieve data through CAN
+}
+
+void serialUDS() {
+//reads and stores the byte array size, is required for padding
+//in case message is shorter than 10 bytes. The serial communication will not send anything more
+//than 11 bits CAN frame identifier + 8 bytes. 
+  CanFrame UDSFrame = { 0 };// all array is initialized to 0s, so stuffing is automatically done if no input is received in that location.
+  //UDSFrame.identifier = 0x7DF; // Sets the ID in this case the sending request as a transmitter
+  UDSFrame.extd = 0; // Set extended frame to false since we're doing 8-bit or standard CAN
+  UDSFrame.data_length_code = 8; // Set length of data - change depending on data sent.
+  
+    if(Serial.available() > 0) { //reads if there is data on terminal
+      UDSRequest=Serial.readString();
+      Serial.println(UDSRequest);
+        while ((spaceIndex = UDSRequest.indexOf(' ', startIndex)) != -1) {
+        String word = UDSRequest.substring(startIndex, spaceIndex);  // Extract word
+          if (counter==0)
+          {
+            uint16_t num = (uint16_t) strtol(word.c_str(), NULL, 16);
+            UDSFrame.identifier = num;// Sets the ID in this case the sending request as a transmitter
+          }
+          else
+          {
+            byte Hexframe = (byte) strtol(word.c_str(), NULL, 16);
+            UDSFrame.data[counter-1] = Hexframe;
+          }
+        startIndex = spaceIndex + 1;  // Move to the next word
+        counter++;
+  }
+      
+      ESP32Can.writeFrame(UDSFrame);
+      counter=0; 
+      startIndex=0;
+  }                  
+  delay(500);  
+}
+
+void canSender() {
+  // send packet: id is 11 bits, packet can contain up to 8 bytes of data
+  //Serial.print("Sending packet ... ");
+
+ // CanFrame UDSFrame = { 0 };
+  //UDSFrame.identifier = 0x7DF;  // Sets the ID in this case the sending request as a transmitter
+  //UDSFrame.extd = 0; // Set extended frame to false since we're doing 8-bit or standard CAN
+  //UDSFrame.data_length_code = 8; // Set length of data - change depending on data sent. 
+  //above we will always send 8 bytes and include padding when not complete.  
+  //UDSFrame.data[0] = 0x03; // Write data to buffer. data is not sent until writeFrame() is called.
+  //UDSFrame.data[1] = 0x22;
+  //UDSFrame.data[2] = 0xF1;
+  //UDSFrame.data[3] = 0x90;
+  //UDSFrame.data[4] = 0x00;
+  //UDSFrame.data[5] = 0x00;
+ // UDSFrame.data[6] = 0x00;
+ // UDSFrame.data[7] = 0x00;
+
+  //ESP32Can.writeFrame(UDSFrame); // transmit frame
+  //Serial.println("done");
+
+  //delay(500);
+}
+
+void canReceiver() {
+  // try to parse packet
+  if(ESP32Can.readFrame(rxFrame, 700)) { // 1000 is the timeout value
+    // Communicate that a packet was recieved
+    Serial.printf("Received frame: %03X \r\n", rxFrame.identifier);
+
+    // Communicate packet information
+    for(int i = 0; i <= rxFrame.data_length_code - 1; i ++) {
+      Serial.print((char) rxFrame.data[i]); // Transmit value from the frame 
+    }
+  } else {
+    Serial.println("No frame recieved");
+  }
+}
